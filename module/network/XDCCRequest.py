@@ -17,16 +17,11 @@
     @author: jeix
 """
 
+import os
 import socket
-import re
-
-from os import remove
-from os.path import exists
+import struct
 
 from time import time
-
-import struct
-from select import select
 
 from module.plugins.Plugin import Abort
 
@@ -63,39 +58,36 @@ class XDCCRequest():
         
         return socket.socket()
     
-    def download(self, ip, port, filename, irc, progressNotify=None):
+    def download(self, ip, port, filename, progressNotify=None, resume=None):
+        chunck_name = filename + ".chunk0"
 
-        ircbuffer = ""
+        if os.path.exists(chunck_name) and hasattr(resume, '__call__'):  #: 'resume' is a function?
+            fh = open(chunck_name, "ab")
+            resume_position = fh.tell()
+            if not resume_position:
+                resume_position = os.stat(chunck_name).st_size
+
+            resume_position = resume(resume_position)
+            fh.truncate(resume_position)
+            self.recv = resume_position
+
+        else:
+            fh = open(chunck_name, "wb")
+
         lastUpdate = time()
         cumRecvLen = 0
-        
+
         dccsock = self.createSocket()
-        
+
         dccsock.settimeout(self.timeout)
         dccsock.connect((ip, port))
-        
-        if exists(filename):
-            i = 0
-            nameParts = filename.rpartition(".")
-            while True:
-                newfilename = "%s-%d%s%s" % (nameParts[0], i, nameParts[1], nameParts[2])
-                i += 1
-                
-                if not exists(newfilename):
-                    filename = newfilename
-                    break
-        
-        fh = open(filename, "wb")
-        
+
         # recv loop for dcc socket
         while True:
             if self.abort:
                 dccsock.close()
                 fh.close()
-                remove(filename)
                 raise Abort()
-            
-            self._keepAlive(irc, ircbuffer)
             
             data = dccsock.recv(4096)
             dataLen = len(data)
@@ -112,8 +104,7 @@ class XDCCRequest():
                 
                 if progressNotify:
                     progressNotify(self.percent)
-            
-            
+
             if not data:
                 break
             
@@ -125,23 +116,11 @@ class XDCCRequest():
         dccsock.close()
         fh.close()
         
+        os.rename(chunck_name, filename)
+
         return filename
     
-    def _keepAlive(self, sock, readbuffer):
-        fdset = select([sock], [], [], 0)
-        if sock not in fdset[0]:
-            return
-            
-        readbuffer += sock.recv(1024)
-        temp = readbuffer.split("\n")
-        readbuffer = temp.pop()
-
-        for line in temp:
-            line  = line.rstrip()
-            first = line.split()
-            if first[0] == "PING":
-                sock.send("PONG %s\r\n" % first[1])
-
+    
     def abortDownloads(self):
         self.abort = True
     

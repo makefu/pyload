@@ -41,15 +41,16 @@ class RequestFactory():
         self.lock.acquire()
 
         if type == "XDCC":
-            return XDCCRequest(proxies=self.getProxies())
+            req = XDCCRequest(proxies=self.getProxies())
 
-        req = Browser(self.bucket, self.getOptions())
-
-        if account:
-            cj = self.getCookieJar(pluginName, account)
-            req.setCookieJar(cj)
         else:
-            req.setCookieJar(CookieJar(pluginName))
+            req = Browser(self.bucket, self.getOptions())
+
+            if account:
+                cj = self.getCookieJar(pluginName, account)
+                req.setCookieJar(cj)
+            else:
+                req.setCookieJar(CookieJar(pluginName))
 
         self.lock.release()
         return req
