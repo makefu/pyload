@@ -111,11 +111,12 @@ class IRC(object):
                 while self._get_response_line() and time.time()-start_time < 30:  #: Skip MOTD
                     pass
 
-                self.plugin.log_info(_("Successfully connected to %s:%s") % (host, port))
+                self.plugin.log_debug(_("Successfully connected to %s:%s") % (host, port))
 
                 return True
 
         self.plugin.log_error(_("Connection to %s:%s failed.") % (host, port))
+
         return False
 
 
@@ -124,7 +125,7 @@ class IRC(object):
         if self.connected:
             self.plugin.log_info(_("Diconnecting from %s:%s") % (self.host, self.port))
             self.irc_sock.send("QUIT :byebye\r\n")
-            self.plugin.log_info(_("Disconnected"))
+            self.plugin.log_debug(_("Disconnected"))
 
         else:
             self.plugin.log_warning(_("Not connected to server, cannot disconnect"))
@@ -182,7 +183,7 @@ class IRC(object):
     def join_channel(self, chan):
         chan = "#" + chan if chan[0] != '#' else chan
 
-        self.plugin.log_debug(_("Joining channel %s") % chan)
+        self.plugin.log_info(_("Joining channel %s") % chan)
         self.irc_sock.send("JOIN %s\r\n" % chan)
 
         start_time = time.time()
@@ -195,7 +196,7 @@ class IRC(object):
                 return False
 
             elif command == "353" and args[2].lower() == chan.lower():  #: RPL_NAMREPLY
-                self.plugin.log_info(_("Successfully joined channel %s") % chan)
+                self.plugin.log_debug(_("Successfully joined channel %s") % chan)
                 return True
 
         return False
@@ -240,7 +241,8 @@ class IRC(object):
             self.irc_sock.send("PRIVMSG %s :xdcc cancel\r\n" % bot)
 
         else:
-            self.plugin.log_debug(_("No XDCC request pending, cannot cancel"))
+            self.plugin.log_warning(_("No XDCC request pending, cannot cancel"))
+
 
     @lock
     def xdcc_request_resume(self, bot, dcc_port, file_name, resume_position):
@@ -270,10 +272,10 @@ class IRC(object):
                 else:
                     time.sleep(0.1)
 
-            self.plugin.log_debug(_("Timeout while waiting for resume acknowledge, not resuming"))
+            self.plugin.log_warning(_("Timeout while waiting for resume acknowledge, not resuming"))
 
         else:
-            self.plugin.log_debug(_("No XDCC request pending, cannot resume"))
+            self.plugin.log_error(_("No XDCC request pending, cannot resume"))
 
         return 0
 
@@ -405,7 +407,7 @@ class XDCC(Hoster):
                         self.irc_client.xdcc_request_pack(bot, pack)
 
                         # Main IRC loop
-                        while not self.pyfile.abort or (self.dl_started and not self.dl_finished):
+                        while (not self.pyfile.abort or self.dl_started) and not self.dl_finished:
                             if not self.dl_started:
                                 if self.request_again:
                                     if time.time()-self.irc_client.xdcc_request_time > 300:
@@ -479,7 +481,7 @@ class XDCC(Hoster):
             self.log_error(_("Invalid Pack Number"))
             self.fail(_("Invalid Pack Number"))
 
-        m = re.match('\x01DCC SEND (?P<NAME>.*?) (?P<IP>\d+) (?P<PORT>\d+)(?: (?P<SIZE>\d+))?\x01', text)  #: XDCC?
+        m = re.match('\x01DCC SEND "?(?P<NAME>.*?)"? (?P<IP>\d+) (?P<PORT>\d+)(?: (?P<SIZE>\d+))?\x01', text)  #: XDCC?
         if m:
             ip = socket.inet_ntoa(struct.pack('!I', int(m.group('IP'))))
             self.dcc_port = int(m.group('PORT'))
