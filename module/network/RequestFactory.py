@@ -37,15 +37,20 @@ class RequestFactory():
     def iface(self):
         return self.core.config["download"]["interface"]
 
-    def getRequest(self, pluginName, account=None, type="HTTP"):
+    def getRequest(self, pluginName, type="HTTP", **kwargs):
         self.lock.acquire()
 
+        options = self.getOptions()
+        options.update(kwargs)  # submit kwargs as additional options
+
+
         if type == "XDCC":
-            req = XDCCRequest(proxies=self.getProxies())
+            req = XDCCRequest(options)
 
         else:
-            req = Browser(self.bucket, self.getOptions())
+            req = Browser(self.bucket, options)
 
+            account = kwargs.pop('account', None)
             if account:
                 cj = self.getCookieJar(pluginName, account)
                 req.setCookieJar(cj)

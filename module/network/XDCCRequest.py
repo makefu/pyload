@@ -18,6 +18,7 @@
 """
 
 import os
+import select
 import socket
 import struct
 
@@ -27,11 +28,9 @@ from module.plugins.Plugin import Abort
 
 
 class XDCCRequest():
-    def __init__(self, timeout=30, proxies={}):
-        
-        self.proxies = proxies
-        self.timeout = timeout
-        
+    def __init__(self, options={}):
+        self.proxies = options.get('proxies', {})
+
         self.filesize = 0
         self.recv = 0
         self.speed = 0
@@ -79,7 +78,7 @@ class XDCCRequest():
 
         dccsock = self.createSocket()
 
-        dccsock.settimeout(self.timeout)
+        recv_list = [dccsock]
         dccsock.connect((ip, port))
 
         # recv loop for dcc socket
@@ -88,13 +87,23 @@ class XDCCRequest():
                 dccsock.close()
                 fh.close()
                 raise Abort()
+
+            fdset = select.select(recv_list, [], [], 0.1)
+            if dccsock in fdset[0]:
+                data = dccsock.recv(4096)
+                dataLen = len(data)
+                self.recv += dataLen
             
-            data = dccsock.recv(4096)
-            dataLen = len(data)
-            self.recv += dataLen
-            
-            cumRecvLen += dataLen
-            
+                cumRecvLen += dataLen
+
+                if not data:
+                    break
+
+                fh.write(data)
+
+                # acknowledge data by sending number of recceived bytes
+                dccsock.send(struct.pack('!I', self.recv))
+
             now = time()
             timespan = now - lastUpdate
             if timespan > 1:            
@@ -105,14 +114,6 @@ class XDCCRequest():
                 if progressNotify:
                     progressNotify(self.percent)
 
-            if not data:
-                break
-            
-            fh.write(data)
-            
-            # acknowledge data by sending number of recceived bytes
-            dccsock.send(struct.pack('!I', self.recv))
-        
         dccsock.close()
         fh.close()
         
