@@ -21,8 +21,7 @@ import os
 import select
 import socket
 import struct
-
-from time import time
+import time
 
 from module.plugins.Plugin import Abort
 
@@ -54,13 +53,16 @@ class XDCCRequest():
         # else:
             # sock = socket.socket()
         # return sock
-        
-        return socket.socket()
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 16384)
+
+        return sock
     
     def download(self, ip, port, filename, progressNotify=None, resume=None):
         chunck_name = filename + ".chunk0"
 
-        if os.path.exists(chunck_name) and hasattr(resume, '__call__'):  #: 'resume' is a function?
+        if resume and os.path.exists(chunck_name):
             fh = open(chunck_name, "ab")
             resume_position = fh.tell()
             if not resume_position:
@@ -73,7 +75,7 @@ class XDCCRequest():
         else:
             fh = open(chunck_name, "wb")
 
-        lastUpdate = time()
+        lastUpdate = time.time()
         cumRecvLen = 0
 
         dccsock = self.createSocket()
@@ -93,7 +95,7 @@ class XDCCRequest():
                 data = dccsock.recv(4096)
                 dataLen = len(data)
                 self.recv += dataLen
-            
+
                 cumRecvLen += dataLen
 
                 if not data:
@@ -104,7 +106,7 @@ class XDCCRequest():
                 # acknowledge data by sending number of recceived bytes
                 dccsock.send(struct.pack('!I', self.recv))
 
-            now = time()
+            now = time.time()
             timespan = now - lastUpdate
             if timespan > 1:            
                 self.speed = cumRecvLen / timespan
