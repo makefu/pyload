@@ -33,7 +33,7 @@ class XDCCRequest():
         self.filesize = 0
         self.recv = 0
         self.speed = 0
-        
+        self.sockBuf = 65536
         self.abort = False
 
     
@@ -55,7 +55,7 @@ class XDCCRequest():
         # return sock
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, sockBuf)
 
         return sock
     
@@ -90,9 +90,9 @@ class XDCCRequest():
                 fh.close()
                 raise Abort()
 
-            fdset = select.select(recv_list, [], [], 0.1)
+            fdset = select.select(recv_list, [], [], 1)
             if dccsock in fdset[0]:
-                data = dccsock.recv(4096)
+                data = dccsock.recv(self.sockBuf)
                 dataLen = len(data)
                 self.recv += dataLen
 
@@ -101,14 +101,15 @@ class XDCCRequest():
                 if not data:
                     break
 
-                fh.write(data)
-
                 # acknowledge data by sending number of recceived bytes
-                dccsock.send(struct.pack('!I', self.recv))
+                dccsock.sendall(struct.pack('!I', self.recv))
+
+                # now write data
+                fh.write(data)
 
             now = time.time()
             timespan = now - lastUpdate
-            if timespan > 1:            
+            if timespan > 1:
                 self.speed = cumRecvLen / timespan
                 cumRecvLen = 0
                 lastUpdate = now
