@@ -55,7 +55,7 @@ class XDCCRequest():
         # return sock
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 16384)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
 
         return sock
     
