@@ -33,7 +33,6 @@ class XDCCRequest():
         self.filesize = 0
         self.recv = 0
         self.speed = 0
-        self.sockBuf = 65536
         self.abort = False
 
     
@@ -55,13 +54,12 @@ class XDCCRequest():
         # return sock
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, sockBuf)
+        #sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8192)
 
         return sock
     
     def download(self, ip, port, filename, progressNotify=None, resume=None):
         chunck_name = filename + ".chunk0"
-
         if resume and os.path.exists(chunck_name):
             fh = open(chunck_name, "ab")
             resume_position = fh.tell()
@@ -82,44 +80,64 @@ class XDCCRequest():
 
         recv_list = [dccsock]
         dccsock.connect((ip, port))
+        dccsock.setblocking(0)
+
 
         # recv loop for dcc socket
         while True:
+            data = ""
             if self.abort:
                 dccsock.close()
                 fh.close()
                 raise Abort()
 
-            fdset = select.select(recv_list, [], [], 1)
-            if dccsock in fdset[0]:
-                data = dccsock.recv(self.sockBuf)
+            recv_socks,_,_ = select.select(recv_list, [], [],1)
+            if self.recv == self.filesize:
+                break
+            elif dccsock in recv_socks:
+                try:
+                    while True:
+                        t_data = dccsock.recv(1024)
+                        data += t_data
+                except Exception as ex:
+                    if ex.errno == 11:  # EAGAIN
+                        pass
+                    else:
+                        raise ex
+
                 dataLen = len(data)
                 self.recv += dataLen
 
                 cumRecvLen += dataLen
 
-                if not data:
-                    break
-
-                # acknowledge data by sending number of recceived bytes
-                dccsock.sendall(struct.pack('!I', self.recv))
-
-                # now write data
+                # write data to file
                 fh.write(data)
+
+                # acknowledge data received but this sometimes blocks forever
+                # so we just ignore the error and continue as if nothing
+                # happened
+                # https://github.com/cinchrb/cinch/blob/master/lib/cinch/dcc/incoming/send.rb#L110
+                try:
+                    dccsock.send(struct.pack('!I', dataLen))
+                    pass
+                except Exception as ex:
+                    if ex.errno == 11: pass
+                    else: raise ex
+            else: continue
 
             now = time.time()
             timespan = now - lastUpdate
-            if timespan > 1:
+            if timespan > 5:
                 self.speed = cumRecvLen / timespan
                 cumRecvLen = 0
                 lastUpdate = now
-                
+
                 if progressNotify:
                     progressNotify(self.percent)
 
         dccsock.close()
         fh.close()
-        
+ 
         os.rename(chunck_name, filename)
 
         return filename
